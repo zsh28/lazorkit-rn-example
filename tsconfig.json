@@ -1,17 +1,17 @@
 {
-  "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
     "skipLibCheck": true,
-    "typeRoots": ["./node_modules/@types", "./src/types"],
-    "jsx": "react-native"
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "src/types/**/*.d.ts"
+  "references": [
+    {
+      "path": "./examples/mobile"
+    }
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "files": []
 }
