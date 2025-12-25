@@ -24,14 +24,17 @@
             "CFBundleURLSchemes": ["lazordemo"]
           }
         ]
-      }
+      },
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "com.lazor.demowallet",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#3b82f6"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#3b82f6",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "icon": "./assets/icon.png",
       "permissions": [
         "CAMERA",
         "USE_BIOMETRIC",
@@ -55,7 +58,8 @@
       ]
     },
     "web": {
-      "output": "static"
+      "output": "static",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [
