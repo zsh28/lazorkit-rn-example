@@ -1,2 +1,36 @@
 @import "tailwindcss";
 @import "uniwind";
+
+/* Global styles and CSS variables */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+}
+
+/* Custom utilities */
+@layer utilities {
+  .shadow-sm {
+    shadow-color: #000;
+    shadow-offset: 0px 1px;
+    shadow-opacity: 0.05;
+    shadow-radius: 2px;
+    elevation: 1;
+  }
+  
+  .shadow-md {
+    shadow-color: #000;
+    shadow-offset: 0px 2px;
+    shadow-opacity: 0.1;
+    shadow-radius: 4px;
+    elevation: 3;
+  }
+  
+  .shadow-lg {
+    shadow-color: #000;
+    shadow-offset: 0px 4px;
+    shadow-opacity: 0.15;
+    shadow-radius: 8px;
+    elevation: 5;
+  }
+}
