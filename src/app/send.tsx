@@ -2,13 +2,14 @@ import { StatusBar } from "expo-status-bar";
 import { View, Text, ScrollView, Alert, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { useState, useCallback, useMemo, useEffect } from "react";
-import * as Haptics from 'expo-haptics';
-import { PublicKey } from '@solana/web3.js';
+import { MotiView } from 'moti';
 
 // Hooks
 import { useAllTokenBalances } from '../hooks/useTokenBalances';
 import { useSendTransaction } from '../hooks/useSendTransaction';
 import { useAddressBook, useRecentAddresses } from '../hooks/useAddressBook';
+import { useHaptics } from '../hooks/useHaptics';
+import { useNavigationWithFeedback } from '../hooks/useNavigationWithFeedback';
 
 // Components
 import { IconButton } from '../components/ui/IconButton';
@@ -19,13 +20,19 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { TokenDropdown } from '../components/wallet/TokenDropdown';
 import { Modal } from '../components/ui/Modal';
 
-// Utils
+// Services
 import { isValidTokenAmount } from '../services/formatters/amount';
 import { formatTokenAmountDisplay } from '../services/formatters/amount';
+import { validateSolanaAddress, validateTokenAmount } from '../services/validators';
+import { logger } from '../services/logger';
+
+// Types
 import { TokenMetadata } from '../types/tokens';
 
 export default function SendScreen() {
   const router = useRouter();
+  const { light, success, error: hapticError } = useHaptics();
+  const { goBack } = useNavigationWithFeedback();
 
   // State
   const [selectedToken, setSelectedToken] = useState<TokenMetadata | null>(null);
@@ -35,6 +42,7 @@ export default function SendScreen() {
   const [recipientError, setRecipientError] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [addressLabel, setAddressLabel] = useState('');
+  const [isProcessingSuccess, setIsProcessingSuccess] = useState(false);
 
   // Hooks
   const { data: tokens, isLoading: tokensLoading } = useAllTokenBalances();
@@ -52,29 +60,28 @@ export default function SendScreen() {
   useEffect(() => {
     if (tokens && tokens.length > 0 && !selectedToken) {
       const sol = tokens.find(t => t.mint === 'So11111111111111111111111111111111111111112');
-      if (sol) setSelectedToken(sol);
+      if (sol) {
+        setSelectedToken(sol);
+        logger.info('Auto-selected SOL token', { screen: 'Send' });
+      }
     }
   }, [tokens, selectedToken]);
 
-  // Validate address
+  // Validate address using validation service
   const validateAddress = useCallback((address: string): boolean => {
-    if (!address || address.trim().length === 0) {
-      setRecipientError('Recipient address is required');
+    const result = validateSolanaAddress(address);
+    
+    if (!result.valid) {
+      setRecipientError(result.error || 'Invalid address');
       return false;
     }
 
-    try {
-      new PublicKey(address);
-      setRecipientError('');
-      return true;
-    } catch {
-      setRecipientError('Invalid Solana address');
-      return false;
-    }
+    setRecipientError('');
+    return true;
   }, []);
 
-  // Validate amount
-  const validateAmount = useCallback((value: string): boolean => {
+  // Validate amount using validation service
+  const validateAmountInput = useCallback((value: string): boolean => {
     if (!value || value.trim().length === 0) {
       setAmountError('Amount is required');
       return false;
@@ -90,11 +97,16 @@ export default function SendScreen() {
       return false;
     }
 
-    const numValue = parseFloat(value);
-    const maxBalance = selectedToken.balance / Math.pow(10, selectedToken.decimals);
+    // Use validation service
+    const result = validateTokenAmount(value, {
+      mint: selectedToken.mint,
+      symbol: selectedToken.symbol,
+      decimals: selectedToken.decimals,
+      balance: selectedToken.balance / Math.pow(10, selectedToken.decimals),
+    });
 
-    if (numValue > maxBalance) {
-      setAmountError('Insufficient balance');
+    if (!result.valid) {
+      setAmountError(result.error || 'Invalid amount');
       return false;
     }
 
@@ -106,7 +118,7 @@ export default function SendScreen() {
   const handleMaxPress = useCallback(() => {
     if (!selectedToken) return;
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    light();
     const maxAmount = selectedToken.balance / Math.pow(10, selectedToken.decimals);
     
     // For SOL, leave some for fees
@@ -115,15 +127,16 @@ export default function SendScreen() {
       : maxAmount;
 
     setAmount(finalAmount.toString());
-    validateAmount(finalAmount.toString());
-  }, [selectedToken, validateAmount]);
+    validateAmountInput(finalAmount.toString());
+    logger.action('Max button clicked', { token: selectedToken.symbol, amount: finalAmount });
+  }, [selectedToken, validateAmountInput, light]);
 
   // Handle recent address selection
   const handleRecentAddressPress = useCallback((address: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    light();
     setRecipient(address);
     validateAddress(address);
-  }, [validateAddress]);
+  }, [validateAddress, light]);
 
   // Handle save address
   const handleSaveAddress = useCallback(() => {
@@ -131,9 +144,9 @@ export default function SendScreen() {
       return;
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    light();
     setShowSaveModal(true);
-  }, [recipient, validateAddress]);
+  }, [recipient, validateAddress, light]);
 
   // Handle confirm save
   const handleConfirmSave = useCallback(() => {
@@ -143,15 +156,15 @@ export default function SendScreen() {
       setAddressLabel('');
       
       // Show success feedback
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      success();
     }
-  }, [addressLabel, recipient, addEntry]);
+  }, [addressLabel, recipient, addEntry, success]);
 
   // Handle send
   const handleSend = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    hapticError();
 
-    const isAmountValid = validateAmount(amount);
+    const isAmountValid = validateAmountInput(amount);
     const isAddressValid = validateAddress(recipient);
 
     if (!isAmountValid || !isAddressValid || !selectedToken) {
@@ -179,31 +192,36 @@ export default function SendScreen() {
               },
               {
                 onSuccess: () => {
-                  console.log('📱 Send screen: Transaction SUCCESS callback fired!');
+                  logger.transaction('send', { screen: 'Send', recipient });
+                  
+                  // Set processing success state to keep loading screen visible
+                  setIsProcessingSuccess(true);
                   
                   // Mark address as used
                   markAsUsed(recipient);
-                  console.log('📱 Marked address as used');
+                  logger.info('Address marked as used', { address: recipient });
                   
                   // Reset form
                   setAmount('');
                   setRecipient('');
                   setAmountError('');
                   setRecipientError('');
-                  console.log('📱 Form reset complete');
+                  logger.info('Form reset complete', { screen: 'Send' });
                   
-                  // Go back to dashboard
-                  console.log('📱 Navigating back to dashboard in 1 second...');
+                  // Navigate to dashboard after longer delay
+                  // Keep loading overlay visible longer to prevent screen flash
+                  logger.navigation('Dashboard', { from: 'Send', reason: 'transaction_success' });
                   setTimeout(() => {
-                    console.log('📱 Executing router.back()');
-                    router.back();
-                  }, 1000);
+                    // Use replace instead of back to avoid transition animation
+                    router.replace('/dashboard');
+                    // Reset processing state after longer delay to ensure smooth transition
+                    setTimeout(() => setIsProcessingSuccess(false), 1000);
+                  }, 1500);
                 },
                 onError: (error: any) => {
                   // Error is already handled by useSendTransaction hook
-                  // Just log it here for debugging
-                  console.log('📱 Transaction error in send screen:', error?.message);
-                  console.log('📱 Staying on send screen - not navigating');
+                  logger.error('Transaction error in send screen', error, { screen: 'Send' });
+                  setIsProcessingSuccess(false);
                   // Don't navigate away - stay on send screen
                 },
               }
@@ -212,7 +230,7 @@ export default function SendScreen() {
         },
       ]
     );
-  }, [amount, recipient, selectedToken, validateAmount, validateAddress, sendTransaction, markAsUsed, router]);
+  }, [amount, recipient, selectedToken, validateAmountInput, validateAddress, sendTransaction, markAsUsed, router, hapticError]);
 
   // Estimated fee (simplified)
   const estimatedFee = useMemo(() => {
@@ -236,13 +254,54 @@ export default function SendScreen() {
     <View className="flex-1 bg-gray-50">
       <StatusBar style="dark" />
 
+      {/* Full-screen loading overlay when sending transaction */}
+      {(isSending || isProcessingSuccess) && (
+        <MotiView 
+          from={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ type: 'timing', duration: 300 }}
+          className="absolute inset-0 bg-white z-50 items-center justify-center px-6"
+          style={{ 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            elevation: 1000,
+            zIndex: 9999
+          }}
+        >
+          <MotiView
+            from={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', delay: 100 }}
+            className="items-center"
+          >
+            <LoadingSpinner size="large" />
+            <Text className="text-xl font-semibold text-gray-900 mt-6 mb-2">
+              {isProcessingSuccess ? 'Transaction Successful!' : 'Processing Transaction'}
+            </Text>
+            <Text className="text-sm text-gray-600 text-center mb-4">
+              {isProcessingSuccess ? 'Returning to dashboard...' : 'Waiting for confirmation...'}
+            </Text>
+            <Card variant="outlined" padding="medium" className="w-full">
+              <Text className="text-xs text-gray-600 text-center">
+                {isProcessingSuccess 
+                  ? 'Your transaction has been confirmed and will appear in your history.'
+                  : 'Your transaction is being processed. This may take a few moments.'}
+              </Text>
+            </Card>
+          </MotiView>
+        </MotiView>
+      )}
+
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 pt-12 pb-4">
         <IconButton
           iconName="arrow-back"
           size="medium"
           variant="ghost"
-          onPress={() => router.back()}
+          onPress={goBack}
         />
         <Text className="text-xl font-bold text-gray-900">Send</Text>
         <View className="w-12" />
@@ -269,7 +328,7 @@ export default function SendScreen() {
                 value={amount}
                 onChangeText={(text) => {
                   setAmount(text);
-                  validateAmount(text);
+                  validateAmountInput(text);
                 }}
                 keyboardType="decimal-pad"
                 error={amountError}

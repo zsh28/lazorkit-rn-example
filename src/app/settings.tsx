@@ -9,6 +9,7 @@ import { SESSION_TIMEOUT_OPTIONS, SessionTimeoutValue } from '../providers/Secur
 import { useHiddenTokens } from '../hooks/useHiddenTokens';
 import { useAddressBook } from '../hooks/useAddressBook';
 import { useAllTokenBalances } from '../hooks/useTokenBalances';
+import { useNavigationWithFeedback } from '../hooks/useNavigationWithFeedback';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -16,6 +17,7 @@ import { NetworkBadge } from '../components/wallet/NetworkBadge';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { useToast } from '../providers/ToastProvider';
 import { truncateAddress } from '../services/formatters/address';
+import { logger } from '../services/logger';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { getRpcUrl, setCustomRpcUrl, resetRpcUrl, testRpcUrl, DEFAULT_RPC_ENDPOINTS } from '../services/storage/rpc';
 import { clearAllTransactionCaches } from '../services/storage/transactions';
@@ -30,6 +32,7 @@ export default function SettingsScreen() {
   const { entries: addressBookEntries, deleteEntry } = useAddressBook();
   const { data: allTokens, isLoading: isLoadingTokens } = useAllTokenBalances();
   const { showToast } = useToast();
+  const { goBack } = useNavigationWithFeedback();
 
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -100,7 +103,7 @@ export default function SettingsScreen() {
         }
       }
     } catch (error) {
-      console.error('App lock toggle error:', error);
+      logger.error('App lock toggle error', error, { screen: 'Settings' });
       showToast('Failed to toggle app lock', 'error');
     }
   };
@@ -206,13 +209,13 @@ export default function SettingsScreen() {
                   router.replace('/welcome');
                 },
                 onFail: (error) => {
-                  console.error('Logout error:', error);
+                  logger.error('Logout error', error, { screen: 'Settings' });
                   showToast('Failed to logout', 'error');
                   setIsLoggingOut(false);
                 }
               });
             } catch (error) {
-              console.error('Logout error:', error);
+              logger.error('Logout error', error, { screen: 'Settings' });
               showToast('Failed to logout', 'error');
               setIsLoggingOut(false);
             }
@@ -346,7 +349,7 @@ export default function SettingsScreen() {
       <View className="px-4 pt-12 pb-8">
         {/* Header */}
         <View className="mb-6">
-          <Pressable onPress={() => router.back()}>
+          <Pressable onPress={goBack}>
             <Text className="text-primary-600 text-base mb-2">← Back</Text>
           </Pressable>
           <Text className="text-3xl font-bold text-gray-900">Settings</Text>

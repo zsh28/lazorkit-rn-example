@@ -3,7 +3,6 @@ import { View, FlatList, RefreshControl, Alert, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { useState, useCallback } from "react";
 import * as React from 'react';
-import * as Haptics from 'expo-haptics';
 
 // Hooks
 import { useLazor } from '../providers/LazorProvider';
@@ -11,6 +10,11 @@ import { useAllTokenBalances } from '../hooks/useTokenBalances';
 import { useHiddenTokens } from '../hooks/useHiddenTokens';
 import { useAirdrop, useShouldShowAirdrop } from '../hooks/useAirdrop';
 import { useTransactions } from '../hooks/useTransactions';
+import { useHaptics } from '../hooks/useHaptics';
+import { useNavigationWithFeedback } from '../hooks/useNavigationWithFeedback';
+
+// Services
+import { logger } from '../services/logger';
 
 // Components
 import { NetworkBadge } from '../components/wallet/NetworkBadge';
@@ -37,6 +41,8 @@ export default function DashboardScreen() {
   const { requestAirdrop, isRequesting } = useAirdrop();
   const shouldShowAirdrop = useShouldShowAirdrop();
   const { data: recentTransactions } = useTransactions(3); // Get 3 recent transactions
+  const { light, medium, heavy } = useHaptics();
+  const { navigate } = useNavigationWithFeedback();
 
   // Redirect to welcome screen if not connected - use useEffect to avoid navigation during render
   React.useEffect(() => {
@@ -56,41 +62,37 @@ export default function DashboardScreen() {
   }
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    light();
     await refetch();
     setIsRefreshing(false);
-  }, [refetch]);
+  }, [refetch, light]);
 
   // Navigation handlers
   const handleSend = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/send');
-  }, [router]);
+    navigate('/send');
+  }, [navigate]);
 
   const handleReceive = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/receive');
-  }, [router]);
+    navigate('/receive');
+  }, [navigate]);
 
   const handleSettings = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/settings');
-  }, [router]);
+    navigate('/settings');
+  }, [navigate]);
 
   const handleViewTransactions = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/transaction-history');
-  }, [router]);
+    navigate('/transaction-history');
+  }, [navigate]);
 
   // Token handlers
   const handleTokenPress = useCallback((mint: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    light();
     // Navigate to token details (to be implemented)
-    console.log('Token pressed:', mint);
-  }, []);
+    logger.action('Token pressed', { mint, screen: 'Dashboard' });
+  }, [light]);
 
   const handleTokenLongPress = useCallback((mint: string, symbol: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    heavy();
     
     Alert.alert(
       `Hide ${symbol}?`,
@@ -105,17 +107,19 @@ export default function DashboardScreen() {
           style: 'destructive',
           onPress: () => {
             hideToken(mint);
+            logger.action('Token hidden', { mint, symbol, screen: 'Dashboard' });
           },
         },
       ]
     );
-  }, [hideToken]);
+  }, [hideToken, heavy]);
 
   // Airdrop handler
   const handleAirdrop = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    medium();
     requestAirdrop(1); // Request 1 SOL
-  }, [requestAirdrop]);
+    logger.action('Airdrop requested', { amount: 1, screen: 'Dashboard' });
+  }, [requestAirdrop, medium]);
 
   // Redirect to welcome screen if not connected
   if (!isConnected) {
@@ -254,7 +258,7 @@ export default function DashboardScreen() {
                         onPress={() => {
                           // Open transaction in explorer
                           const explorerUrl = `https://explorer.solana.com/tx/${tx.signature}?cluster=devnet`;
-                          console.log('Open transaction:', explorerUrl);
+                          logger.action('Transaction explorer opened', { signature: tx.signature, screen: 'Dashboard' });
                         }}
                       />
                     </View>

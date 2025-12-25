@@ -7,7 +7,9 @@ import { OnboardingSlide } from '../components/onboarding/OnboardingSlide';
 import { PaginationDots } from '../components/onboarding/PaginationDots';
 import { Button } from '../components/ui/Button';
 import { useSecurity } from '../providers/SecurityProvider';
-import * as Haptics from 'expo-haptics';
+import { useHaptics } from '../hooks/useHaptics';
+import { useNavigationWithFeedback } from '../hooks/useNavigationWithFeedback';
+import { logger } from '../services/logger';
 import * as LocalAuthentication from 'expo-local-authentication';
 
 const { width } = Dimensions.get('window');
@@ -44,6 +46,8 @@ export default function OnboardingScreen() {
   const [showBiometricSetup, setShowBiometricSetup] = useState(false);
   const [hasAuthHardware, setHasAuthHardware] = useState(false);
   const { enableAppLock, disableAppLock } = useSecurity();
+  const { light } = useHaptics();
+  const { replace } = useNavigationWithFeedback();
 
   // Check if authentication hardware is available (biometric or PIN)
   useEffect(() => {
@@ -61,7 +65,7 @@ export default function OnboardingScreen() {
   };
 
   const handleNext = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    light();
     
     if (activeIndex < SLIDES.length - 1) {
       scrollViewRef.current?.scrollTo({
@@ -79,7 +83,7 @@ export default function OnboardingScreen() {
   };
 
   const handleSkip = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    light();
     if (hasAuthHardware) {
       setShowBiometricSetup(true);
     } else {
@@ -114,10 +118,10 @@ export default function OnboardingScreen() {
       
       // Mark onboarding as completed
       await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
-      console.log('Onboarding completed, navigating to dashboard');
+      logger.navigation('Dashboard', { from: 'Onboarding', reason: 'onboarding_completed' });
       router.replace('/dashboard');
     } catch (error) {
-      console.error('Error saving onboarding completion:', error);
+      logger.error('Error saving onboarding completion', error, { screen: 'Onboarding' });
       // Navigate anyway
       router.replace('/dashboard');
     }

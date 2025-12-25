@@ -3,6 +3,7 @@ import { useRouter, usePathname, useSegments, useLocalSearchParams } from "expo-
 import { View, ActivityIndicator } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLazor } from '../providers/LazorProvider';
+import { logger } from '../services/logger';
 
 const ONBOARDING_COMPLETED_KEY = '@lazor_onboarding_completed';
 
@@ -22,8 +23,7 @@ export default function Index() {
       const isTransactionResult = searchParams.type === 'error' || searchParams.type === 'success';
       
       if (isTransactionResult) {
-        console.log('🔍 Index: Transaction result detected - going back to previous screen');
-        console.log('🔍 Index: This will be handled by LazorKit');
+        logger.info('Transaction result detected - going back', { screen: 'Index' });
         // Go back to the previous screen (which should be the send screen)
         hasNavigated.current = true;
         navigationAttempted.current = true;
@@ -33,21 +33,20 @@ export default function Index() {
 
       // Prevent multiple navigations
       if (navigationAttempted.current) {
-        console.log('🔍 Index: Navigation already attempted, skipping...');
+        logger.info('Navigation already attempted, skipping', { screen: 'Index' });
         return;
       }
 
       // Wait for wallet to finish loading
       if (isWalletLoading) {
-        console.log('⏳ Index: Waiting for wallet to load...');
+        logger.info('Waiting for wallet to load', { screen: 'Index' });
         return;
       }
 
       // Check if we're already on a valid route (not index)
       // This prevents navigation when returning from a transaction
       if (pathname && pathname !== '/' && segments.length > 0) {
-        console.log('🔍 Index: Already on route:', pathname, 'segments:', segments);
-        console.log('🔍 Index: Skipping navigation - user is on a valid screen');
+        logger.info('Already on valid route, skipping navigation', { pathname, segments, screen: 'Index' });
         hasNavigated.current = true;
         navigationAttempted.current = true;
         return;
@@ -56,35 +55,33 @@ export default function Index() {
       navigationAttempted.current = true;
 
       try {
-        console.log('🔍 Index: Checking initial route...');
-        console.log('🔍 isConnected:', isConnected);
-        console.log('🔍 Current pathname:', pathname);
+        logger.info('Checking initial route', { isConnected, pathname, screen: 'Index' });
 
         // Check if user has completed onboarding
         const hasCompletedOnboarding = await AsyncStorage.getItem(ONBOARDING_COMPLETED_KEY);
-        console.log('🔍 hasCompletedOnboarding:', hasCompletedOnboarding);
+        logger.info('Onboarding status checked', { hasCompletedOnboarding, screen: 'Index' });
 
         // Small delay to ensure proper navigation
         await new Promise(resolve => setTimeout(resolve, 100));
 
         if (isConnected && hasCompletedOnboarding) {
           // Logged in user who has seen onboarding - go to dashboard
-          console.log('➡️ Navigating to dashboard');
+          logger.navigation('Dashboard', { from: 'Index', reason: 'connected_onboarding_complete' });
           hasNavigated.current = true;
           router.replace('/dashboard');
         } else if (isConnected && !hasCompletedOnboarding) {
           // Logged in but hasn't seen onboarding - show onboarding first
-          console.log('➡️ Navigating to onboarding');
+          logger.navigation('Onboarding', { from: 'Index', reason: 'connected_first_time' });
           hasNavigated.current = true;
           router.replace('/onboarding');
         } else {
           // Not logged in - show welcome/login screen
-          console.log('➡️ Navigating to welcome');
+          logger.navigation('Welcome', { from: 'Index', reason: 'not_connected' });
           hasNavigated.current = true;
           router.replace('/welcome');
         }
       } catch (error) {
-        console.error('❌ Error checking initial route:', error);
+        logger.error('Error checking initial route', error, { screen: 'Index' });
         hasNavigated.current = true;
         // Default to welcome screen on error
         router.replace('/welcome');

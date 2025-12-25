@@ -1,51 +1,150 @@
 import { StatusBar } from "expo-status-bar";
-import { View, Text, Alert, ScrollView } from "react-native";
+import { View, Text, Alert, ScrollView, AppState } from "react-native";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect } from "react";
-import * as Haptics from 'expo-haptics';
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import { useLazor } from '../providers/LazorProvider';
+import { useHaptics } from '../hooks/useHaptics';
+import { useNavigationWithFeedback } from '../hooks/useNavigationWithFeedback';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { APP_CONFIG } from '../constants/config';
 import { MotiView } from 'moti';
+import { logger } from '../services/logger';
 
 const ONBOARDING_COMPLETED_KEY = '@lazor_onboarding_completed';
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const { connect, isConnecting } = useLazor();
+  const { medium, light } = useHaptics();
+  const { replace } = useNavigationWithFeedback();
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const appStateRef = useRef(AppState.currentState);
+  const [showCancelButton, setShowCancelButton] = useState(false);
+  const [connectionInstructions, setConnectionInstructions] = useState('');
 
   // Debug: Log connection state
-  console.log('🔍 WelcomeScreen render - isConnecting:', isConnecting);
+  logger.info('WelcomeScreen render', { isConnecting, screen: 'Welcome' });
 
   // Ensure browser is dismissed when component mounts (handles app resume)
   useEffect(() => {
     try {
       WebBrowser.dismissBrowser();
-      console.log('✅ Dismissed any open browser on WelcomeScreen mount');
+      logger.info('Browser dismissed on mount', { screen: 'Welcome' });
     } catch (err) {
       // Silently ignore - browser might not be open
     }
   }, []);
 
-  const handleConnect = useCallback(async () => {
-    console.log('🔘 Sign In button pressed');
-    const redirectUrl = APP_CONFIG.scheme + '://';
-    console.log('📱 Redirect URL:', redirectUrl);
+  // Monitor connection state and show cancel button after delay
+  useEffect(() => {
+    if (!isConnecting) {
+      setShowCancelButton(false);
+      setConnectionInstructions('');
+      return;
+    }
+
+    // Update instructions immediately when connecting starts
+    setConnectionInstructions('Opening browser...');
+    
+    // After 2 seconds, update instructions
+    const instructionTimeout = setTimeout(() => {
+      setConnectionInstructions('Complete authentication in your browser');
+    }, 2000);
+
+    // Show cancel button after 5 seconds of connecting
+    const cancelTimeout = setTimeout(() => {
+      logger.info('Connection taking longer than expected', { screen: 'Welcome' });
+      setShowCancelButton(true);
+      setConnectionInstructions('Taking longer than expected...');
+    }, 5000);
+
+    return () => {
+      clearTimeout(instructionTimeout);
+      clearTimeout(cancelTimeout);
+    };
+  }, [isConnecting]);
+
+  // Monitor app state to detect if user returns without completing auth
+  useEffect(() => {
+    if (!isConnecting) return;
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      logger.info('App state changed', { from: appStateRef.current, to: nextAppState, screen: 'Welcome' });
+      
+      // If app goes to background, assume browser opened
+      if (appStateRef.current === 'active' && nextAppState.match(/background/)) {
+        logger.info('App went to background - browser likely opened', { screen: 'Welcome' });
+        setConnectionInstructions('Complete authentication in your browser');
+      }
+      
+      // If app comes back to foreground while still connecting, give SDK time to process
+      if (appStateRef.current.match(/background/) && nextAppState === 'active') {
+        logger.info('App returned to foreground while connecting', { screen: 'Welcome' });
+        setConnectionInstructions('Processing authentication...');
+        
+        // Give the SDK 10 seconds to fire callbacks after returning
+        connectionTimeoutRef.current = setTimeout(() => {
+          if (isConnecting) {
+            logger.warn('Connection timeout - no callback received', { screen: 'Welcome' });
+            setConnectionInstructions('Authentication timed out');
+          }
+        }, 10000);
+      }
+      
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+      }
+    };
+  }, [isConnecting]);
+
+  // Handle cancel connection
+  const handleCancelConnection = useCallback(async () => {
+    logger.action('Cancel connection button pressed', { screen: 'Welcome' });
+    light();
     
     try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      // Dismiss any open browser
+      await WebBrowser.dismissBrowser();
+      logger.info('Browser dismissed by user', { screen: 'Welcome' });
+    } catch (err) {
+      logger.error('Error dismissing browser', err, { screen: 'Welcome' });
+    }
+    
+    // Show helpful alert
+    Alert.alert(
+      'Connection Cancelled',
+      'The authentication was cancelled. If you\'re having trouble, please ensure:\n\n• Your device supports passkeys (Face ID, Touch ID, or fingerprint)\n• Your browser is up to date\n• You have a stable internet connection\n\nThen try signing in again.',
+      [{ text: 'OK' }]
+    );
+    
+    // Note: We can't manually reset isConnecting as it's managed by LazorKit SDK
+    // The SDK should eventually timeout and reset the state
+    // If not, user may need to force close and reopen the app
+  }, [light]);
+
+  const handleConnect = useCallback(async () => {
+    logger.action('Sign In button pressed', { screen: 'Welcome' });
+    const redirectUrl = APP_CONFIG.scheme + '://';
+    logger.info('Redirect URL configured', { redirectUrl, screen: 'Welcome' });
+    
+    try {
+      medium();
       
-      console.log('🚀 Calling connect() with redirect URL:', redirectUrl);
+      logger.info('Calling connect with redirect URL', { redirectUrl, screen: 'Welcome' });
       
       await connect({
         redirectUrl: redirectUrl,
         onSuccess: async (walletInfo) => {
-          console.log('✅ onSuccess callback triggered!');
-          console.log('✅ Connected successfully:', walletInfo.smartWallet);
+          logger.info('Connection successful', { smartWallet: walletInfo.smartWallet, screen: 'Welcome' });
           
           // Check if user has already seen onboarding
           try {
@@ -53,26 +152,26 @@ export default function WelcomeScreen() {
             
             if (hasCompletedOnboarding) {
               // User has already seen onboarding, go straight to dashboard
-              console.log('➡️ Going to dashboard (onboarding completed)');
+              logger.navigation('Dashboard', { from: 'Welcome', reason: 'onboarding_completed' });
               router.replace('/dashboard');
             } else {
               // First time login, show onboarding
-              console.log('➡️ Going to onboarding (first time)');
+              logger.navigation('Onboarding', { from: 'Welcome', reason: 'first_time' });
               router.replace('/onboarding');
             }
           } catch (storageError) {
-            console.error('Error checking onboarding flag:', storageError);
+            logger.error('Error checking onboarding flag', storageError, { screen: 'Welcome' });
             // Default to onboarding on error
             router.replace('/onboarding');
           }
         },
         onFail: (error) => {
-          console.error('❌ onFail callback triggered!');
-          console.error('❌ Connection failed:', error);
-          console.error('Error details:', {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
+          logger.error('Connection failed', error, { 
+            screen: 'Welcome',
+            errorDetails: {
+              message: error.message,
+              name: error.name
+            }
           });
           
           // Show user-friendly error message
@@ -88,12 +187,12 @@ export default function WelcomeScreen() {
         }
       });
       
-      console.log('⏳ connect() call completed, waiting for callbacks...');
+      logger.info('Connect call completed, waiting for callbacks', { screen: 'Welcome' });
     } catch (error) {
-      console.error('💥 Connect error:', error);
+      logger.error('Connect error', error, { screen: 'Welcome' });
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     }
-  }, [connect, router]);
+  }, [connect, router, medium]);
 
   return (
     <View className="flex-1 bg-white">
@@ -160,9 +259,45 @@ export default function WelcomeScreen() {
               variant="secondary"
               size="large"
               fullWidth
+              disabled={isConnecting && !showCancelButton}
             >
               {isConnecting ? 'Signing In...' : 'Sign In'}
             </Button>
+            
+            {/* Connection instructions */}
+            {isConnecting && connectionInstructions && (
+              <MotiView
+                from={{ opacity: 0, translateY: -10 }}
+                animate={{ opacity: 1, translateY: 0 }}
+                transition={{ type: 'timing', duration: 300 }}
+                className="mt-3"
+              >
+                <Card variant="filled" padding="small">
+                  <Text className="text-sm text-primary-700 text-center font-medium">
+                    {connectionInstructions}
+                  </Text>
+                </Card>
+              </MotiView>
+            )}
+            
+            {/* Cancel button */}
+            {isConnecting && showCancelButton && (
+              <MotiView
+                from={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: 'timing', duration: 300 }}
+                className="mt-3"
+              >
+                <Button
+                  onPress={handleCancelConnection}
+                  variant="outline"
+                  size="medium"
+                  fullWidth
+                >
+                  Cancel & Try Again
+                </Button>
+              </MotiView>
+            )}
             
             <Text className="text-xs text-gray-500 text-center mt-4 px-4">
               Secure authentication with Face ID, Touch ID, or passkey

@@ -2,13 +2,17 @@ import { StatusBar } from "expo-status-bar";
 import { View, Text, Share, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useCallback } from "react";
-import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 
 // Hooks
 import { useLazor } from '../providers/LazorProvider';
 import { useToast } from '../providers/ToastProvider';
+import { useHaptics } from '../hooks/useHaptics';
+import { useNavigationWithFeedback } from '../hooks/useNavigationWithFeedback';
+
+// Services
+import { logger } from '../services/logger';
 
 // Components
 import { IconButton } from '../components/ui/IconButton';
@@ -20,6 +24,8 @@ export default function ReceiveScreen() {
   const router = useRouter();
   const { smartWalletPubkey } = useLazor();
   const { showToast } = useToast();
+  const { medium } = useHaptics();
+  const { goBack } = useNavigationWithFeedback();
 
   const walletAddress = smartWalletPubkey?.toString() || '';
 
@@ -28,29 +34,31 @@ export default function ReceiveScreen() {
     if (!walletAddress) return;
     
     try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      medium();
       await Clipboard.setStringAsync(walletAddress);
       showToast('Address copied to clipboard', 'success');
+      logger.action('Address copied', { screen: 'Receive' });
     } catch (error) {
-      console.error('Error copying address:', error);
+      logger.error('Error copying address', error, { screen: 'Receive' });
       showToast('Failed to copy address', 'error');
     }
-  }, [walletAddress, showToast]);
+  }, [walletAddress, showToast, medium]);
 
   // Share address
   const handleShareAddress = useCallback(async () => {
     if (!walletAddress) return;
     
     try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      medium();
       await Share.share({
         message: `My Solana wallet address:\n${walletAddress}`,
         title: 'Solana Wallet Address',
       });
+      logger.action('Address shared', { screen: 'Receive' });
     } catch (error) {
-      console.error('Error sharing address:', error);
+      logger.error('Error sharing address', error, { screen: 'Receive' });
     }
-  }, [walletAddress]);
+  }, [walletAddress, medium]);
 
   if (!walletAddress) {
     return (
@@ -77,7 +85,7 @@ export default function ReceiveScreen() {
           iconName="arrow-back"
           size="medium"
           variant="ghost"
-          onPress={() => router.back()}
+          onPress={goBack}
         />
         <Text className="text-xl font-bold text-gray-900">Receive</Text>
         <View className="w-12" />

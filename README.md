@@ -2,25 +2,27 @@
 
 A production-ready Solana mobile wallet demo built with **Lazor Kit SDK**, **Expo Router**, and **Tailwind CSS** (via Uniwind). This app demonstrates smart wallet functionality with biometric authentication, gasless transactions, and a beautiful, modern UI.
 
+> **For Developers**: See [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) for detailed architecture, patterns, and contribution guidelines.
+
 ## Features
 
 ### Core Functionality
-- **Smart Wallet Integration** - Powered by Lazor Kit SDK with biometric authentication
+- **Smart Wallet Integration** - Powered by Lazor Kit SDK with WebAuthn passkey authentication
 - **Token Management** - View SOL and all SPL token balances with real-time updates
 - **Send & Receive** - Transfer SOL and SPL tokens with intuitive UX
-- **Gasless Transactions** - Optional paymaster support for zero-fee transactions
+- **Gasless Transactions** - Kora paymaster support for zero-fee transactions on devnet
 - **Devnet Airdrop** - Request test SOL directly from the app
 - **Hidden Tokens** - Hide unwanted tokens from your main view
 - **Address Book** - Save frequently used addresses for quick sending
+- **Transaction History** - View recent transactions with full details
+- **Session Management** - Auto-logout after 24 hours of inactivity
 
-### Advanced Features
-- **Biometric Security** - Face ID/Touch ID app lock
-- **Pull-to-Refresh** - Refresh balances with native pull gesture
-- **Auto-Refresh** - Token balances update every 10 seconds
-- **Recent Recipients** - Quick access to recently used addresses
-- **QR Code Sharing** - Share wallet address via QR code (placeholder)
-- **Transaction Validation** - Smart amount and address validation
-- **Error Handling** - Comprehensive error states and retry logic
+### Security Features  
+- **Biometric Security** - Face ID/Touch ID/PIN app lock with configurable timeout
+- **Self-Custodial** - You always control your keys via WebAuthn passkeys
+- **No Seed Phrases** - Secure authentication without memorizing 12/24 words
+- **Secure Storage** - All sensitive data encrypted with AsyncStorage
+- **Session Timeout** - Configurable auto-lock (immediate, 1/5/15/30 min, never)
 
 ### User Experience
 - **Modern UI** - Built with Tailwind CSS for consistent, beautiful design
@@ -49,63 +51,70 @@ A production-ready Solana mobile wallet demo built with **Lazor Kit SDK**, **Exp
 
 ```
 src/
-├── app/                      # Expo Router screens
-│   ├── _layout.tsx          # Root layout with providers
-│   ├── index.tsx            # Dashboard (210 lines)
-│   ├── send.tsx             # Send screen (330 lines)
-│   ├── receive.tsx          # Receive screen (150 lines)
-│   └── settings.tsx         # Settings screen (293 lines)
-├── components/
-│   ├── ui/                  # Reusable UI components
-│   │   ├── Badge.tsx
-│   │   ├── Button.tsx
-│   │   ├── Card.tsx
-│   │   ├── IconButton.tsx
-│   │   ├── Input.tsx
-│   │   ├── LoadingSpinner.tsx
-│   │   ├── Modal.tsx
-│   │   └── Toast.tsx
-│   └── wallet/              # Wallet-specific components
-│       ├── BalanceCard.tsx
-│       ├── NetworkBadge.tsx
-│       ├── QuickActions.tsx
-│       ├── TokenDropdown.tsx
-│       └── TokenListItem.tsx
-├── hooks/                   # Custom React hooks
-│   ├── useAddressBook.ts   # Address management
-│   ├── useAirdrop.ts       # Devnet SOL airdrop
-│   ├── useHiddenTokens.ts  # Hide/unhide tokens
-│   ├── useSendTransaction.ts # Transaction sending
-│   └── useTokenBalances.ts # Token balance queries
-├── providers/               # React Context providers
-│   ├── LazorProvider.tsx   # Lazor SDK wrapper
-│   ├── SecurityProvider.tsx # Biometric auth
-│   └── ToastProvider.tsx   # Toast notifications
-├── services/                # Business logic & utilities
-│   ├── blockchain/
-│   │   └── tokens.ts       # Solana RPC interactions
-│   ├── formatters/
-│   │   ├── address.ts      # Address formatting
-│   │   └── amount.ts       # Token amount parsing
-│   └── storage/
-│       ├── addressBook.ts  # Address persistence
-│       └── tokens.ts       # Hidden tokens storage
-├── types/                   # TypeScript type definitions
-│   ├── toast.ts
-│   ├── tokens.ts
-│   ├── transaction.ts
-│   └── wallet.ts
-├── constants/               # App configuration
-│   ├── animations.ts       # Moti animation configs
-│   ├── config.ts           # RPC URLs, intervals
-│   └── theme.ts            # Color constants
-└── global.css              # Tailwind directives
-
-Config Files:
-├── app.json                # Expo configuration
-├── tailwind.config.js      # Custom Lazor theme
-├── metro.config.js         # Metro bundler config
-└── tsconfig.json           # TypeScript config
+├── app/                      # Expo Router screens (file-based routing)
+│   ├── _layout.tsx          # Root layout with providers & error boundary
+│   ├── index.tsx            # Entry screen with route guard
+│   ├── welcome.tsx          # Sign in screen
+│   ├── onboarding.tsx       # First-time user onboarding
+│   ├── dashboard.tsx        # Main wallet screen
+│   ├── send.tsx             # Send tokens screen
+│   ├── receive.tsx          # Receive tokens screen
+│   ├── settings.tsx         # Settings screen with logout
+│   └── transaction-*.tsx    # Transaction screens
+│
+├── components/               # Reusable components
+│   ├── ui/                  # UI primitives (Button, Card, Input, Modal, etc.)
+│   ├── wallet/              # Wallet-specific components
+│   ├── onboarding/          # Onboarding components
+│   └── ErrorBoundary.tsx    # Error boundaries
+│
+├── hooks/                    # Custom React hooks
+│   ├── useTokenBalances.ts        # Token balance queries
+│   ├── useSendTransaction.ts      # Send transaction logic
+│   ├── useTransactions.ts         # Transaction history
+│   ├── useHaptics.ts              # Haptic feedback utility
+│   ├── useNavigationWithFeedback.ts  # Navigation with haptics & logging
+│   ├── useAddressBook.ts          # Address management
+│   ├── useAirdrop.ts              # Devnet SOL airdrop
+│   └── useHiddenTokens.ts         # Hide/unhide tokens
+│
+├── providers/                # React Context providers
+│   ├── LazorProvider.tsx         # Wallet connection & session management
+│   ├── SecurityProvider.tsx      # Biometric lock & app security
+│   └── ToastProvider.tsx         # Toast notifications
+│
+├── services/                 # Business logic & utilities
+│   ├── blockchain/              # Solana blockchain interactions
+│   │   └── tokens.ts            # Token metadata & operations
+│   ├── formatters/              # Data formatting utilities
+│   │   ├── address.ts           # Address formatting
+│   │   └── amount.ts            # Token amount formatting
+│   ├── logger/                  # Logging service
+│   │   └── index.ts             # Logger with analytics hooks
+│   ├── platform/                # Platform-specific services
+│   │   └── haptics.ts           # Haptic feedback service
+│   ├── storage/                 # AsyncStorage wrappers
+│   │   ├── addressBook.ts       # Saved addresses
+│   │   ├── rpc.ts               # RPC configuration
+│   │   ├── session.ts           # Session & activity tracking
+│   │   ├── tokens.ts            # Hidden tokens
+│   │   └── transactions.ts      # Transaction cache
+│   └── validators/              # Input validation
+│       ├── address.ts           # Solana address validation
+│       ├── amount.ts            # Token amount validation
+│       ├── types.ts             # Validation types
+│       └── index.ts             # Centralized exports
+│
+├── types/                    # TypeScript type definitions
+│   ├── toast.ts             # Toast notification types
+│   ├── tokens.ts            # Token & metadata types
+│   ├── transaction.ts       # Transaction types
+│   └── wallet.ts            # Wallet types
+│
+└── constants/                # App configuration
+    ├── config.ts            # RPC URLs, app settings
+    ├── theme.ts             # Theme colors & values
+    └── animations.ts        # Animation configurations
 ```
 
 ## Installation
@@ -176,11 +185,61 @@ Config Files:
 
 ### Settings
 - **Network**: View current network (Devnet)
-- **Biometric Lock**: Toggle Face ID/Touch ID requirement
+- **RPC Endpoint**: Configure custom RPC URL or reset to default
+- **Biometric Lock**: Toggle Face ID/Touch ID/PIN requirement
+- **Session Timeout**: Configure auto-lock timing (immediate, 1/5/15/30 min, never)
 - **Hidden Tokens**: View and unhide previously hidden tokens
 - **Address Book**: Manage saved addresses
-- **Clear Cache**: Force refresh all cached data
+- **Maintenance**: Clear cache to force refresh
+- **Wallet**: Logout button to disconnect wallet
 - **About**: App version, wallet address, connection status
+
+## Architecture
+
+### Services Layer
+
+The app uses a service-oriented architecture for better code reusability:
+
+**Validation Services** (`src/services/validators/`)
+```typescript
+import { validateSolanaAddress, validateTokenAmount } from '@/services/validators';
+
+const result = validateSolanaAddress(address);
+if (!result.valid) {
+  showError(result.error);
+}
+```
+
+**Logger Service** (`src/services/logger/`)
+```typescript
+import { logger } from '@/services/logger';
+
+logger.info('User action', { screen: 'Dashboard' });
+logger.error('Transaction failed', error);
+logger.transaction('send', { amount: 1.5, token: 'SOL' });
+```
+
+**Haptics Service** (`src/services/platform/haptics.ts`)
+```typescript
+import { useHaptics } from '@/hooks/useHaptics';
+
+const { light, success, error } = useHaptics();
+// Provides consistent tactile feedback
+```
+
+**Navigation with Feedback** (`src/hooks/useNavigationWithFeedback.ts`)
+```typescript
+import { useNavigationWithFeedback } from '@/hooks/useNavigationWithFeedback';
+
+const { goBack, navigate } = useNavigationWithFeedback();
+// Includes haptics and analytics logging
+```
+
+### State Management
+
+1. **Server State** (React Query) - Token balances, transactions, blockchain data
+2. **Global State** (Context) - Wallet connection, security settings, toasts
+3. **Local State** (useState) - Form inputs, UI state
 
 ## Configuration
 
@@ -245,65 +304,34 @@ Property 'className' does not exist on type 'ViewProps'
 5. **Business logic** goes in `src/services/`
 6. **Type definitions** go in `src/types/`
 
-### Adding a New Screen
+### Adding New Features
 
-1. Create file in `src/app/` (e.g., `src/app/history.tsx`)
-2. Export default React component
-3. Use existing hooks and components
-4. Navigate with `router.push('/history')`
+1. **Create types** in `src/types/`
+2. **Create service** in `src/services/` for business logic
+3. **Create hook** in `src/hooks/` for React integration
+4. **Create screen** in `src/app/` for UI
+5. **Add navigation** from existing screens
 
-Example:
+Example workflow for adding a "Swap" feature:
 ```typescript
-// src/app/history.tsx
-import { View, Text } from 'react-native';
-import { useRouter } from 'expo-router';
+// 1. Types
+// src/types/swap.ts
+export interface SwapParams { ... }
 
-export default function HistoryScreen() {
-  const router = useRouter();
-  
-  return (
-    <View className="flex-1 bg-gray-50 p-4">
-      <Text className="text-2xl font-bold">Transaction History</Text>
-    </View>
-  );
-}
+// 2. Service  
+// src/services/blockchain/swap.ts
+export class SwapService { ... }
+
+// 3. Hook
+// src/hooks/useSwap.ts
+export function useSwap() { ... }
+
+// 4. Screen
+// src/app/swap.tsx
+export default function SwapScreen() { ... }
 ```
 
-### Creating a Custom Hook
-
-Example pattern used throughout the app:
-
-```typescript
-// src/hooks/useExample.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-
-export function useExample() {
-  const queryClient = useQueryClient();
-
-  const query = useQuery({
-    queryKey: ['example'],
-    queryFn: async () => {
-      // Fetch data
-    },
-    staleTime: 60000,
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (data: any) => {
-      // Mutate data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['example'] });
-    },
-  });
-
-  return {
-    data: query.data,
-    isLoading: query.isLoading,
-    mutate: mutation.mutate,
-  };
-}
-```
+> See [DEVELOPER_GUIDE.md - Adding New Features](./DEVELOPER_GUIDE.md#adding-new-features) for detailed examples.
 
 ## Testing
 
@@ -466,22 +494,25 @@ npm install
 - [ ] Spending limits
 - [ ] Widget for iOS/Android home screen
 
-## Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 ### Code Style
-- Use TypeScript for all new code
-- Follow existing patterns for hooks and components
-- Use Tailwind CSS classes (via `className` prop)
-- Add JSDoc comments for public functions
-- Keep components under 300 lines
+
+- **TypeScript** for all new code
+- **Follow existing patterns** - See DEVELOPER_GUIDE.md
+- **JSDoc comments** for all public APIs
+- **Validation services** for all user input
+- **Logger service** instead of console.log
+- **Keep components under 300 lines** - extract sub-components
+- **Use TailwindCSS classes** via `className` prop
+
+### Key Principles
+
+1. **Separation of Concerns** - Keep business logic in services, not components
+2. **Type Safety** - Avoid `any` types, use explicit interfaces
+3. **Reusability** - Extract common patterns into hooks and services
+4. **Documentation** - Add comments explaining "why" not "what"
+5. **Testing** - Write tests for critical business logic (coming soon)
+
+See [DEVELOPER_GUIDE.md - Code Style Guidelines](./DEVELOPER_GUIDE.md#code-style-guidelines) for detailed standards.
 
 ## License
 
@@ -497,8 +528,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/lazor-kit-rn-demo/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/lazor-kit-rn-demo/discussions)
 - **Lazor Docs**: [docs.lazor.io](https://docs.lazor.io)
 - **Expo Docs**: [docs.expo.dev](https://docs.expo.dev)
 
